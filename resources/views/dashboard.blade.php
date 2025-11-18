@@ -18,22 +18,31 @@
             editStatusColor: '',
             editingTask: { id: null, field: null, buffer: null },
 
-            // === FUNGSI MODAL STATUS (Lengkap) ===
+            // Memuat status untuk modal.
             async loadModalStatuses() {
                 this.isLoading = true;
                 try {
-                    const response = await fetch('{{ route('statuses.getPersonal') }}');
+                    const response = await fetch('{{ route('statuses.getPersonal') }}', {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                    });
                     this.modalStatuses = await response.json();
                 } catch (error) { console.error('Error loading statuses:', error); }
                 this.isLoading = false;
             },
+            
+            // Menyimpan status baru.
             async storeModalStatus() {
                 if (this.newStatusName.trim() === '') return;
                 this.isLoading = true;
                 try {
                     const response = await fetch('{{ route('statuses.storePersonal') }}', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json', 
+                            'X-Requested-With': 'XMLHttpRequest' 
+                        },
                         body: JSON.stringify({ name: this.newStatusName, color: this.newStatusColor })
                     });
                     if (!response.ok) throw new Error('Failed to save status');
@@ -45,13 +54,20 @@
                 } catch (error) { alert('Failed to save status.'); }
                 this.isLoading = false;
             },
+            
+            // Menghapus status.
             async deleteModalStatus(id) {
                 if (!confirm('Are you sure you want to delete this status?')) return;
                 this.isLoading = true;
                 try {
                     const response = await fetch(`/statuses/personal/${id}`, {
                         method: 'DELETE',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json', 
+                            'X-Requested-With': 'XMLHttpRequest' 
+                        }
                     });
                     if (!response.ok) throw new Error('Failed to delete status');
                     this.modalStatuses = this.modalStatuses.filter(s => s.id !== id);
@@ -59,6 +75,8 @@
                 } catch (error) { alert('Failed to delete status.'); }
                 this.isLoading = false;
             },
+            
+            // Memperbarui status.
             async updateModalStatus() {
                 if (this.editStatusName.trim() === '') return;
                 this.isLoading = true;
@@ -66,7 +84,12 @@
                     const id = this.editingStatusId;
                     const response = await fetch(`/statuses/personal/${id}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json', 
+                            'X-Requested-With': 'XMLHttpRequest' 
+                        },
                         body: JSON.stringify({ name: this.editStatusName, color: this.editStatusColor })
                     });
                     if (!response.ok) throw new Error('Failed to update status');
@@ -79,68 +102,129 @@
                 } catch (error) { alert('Failed to update status.'); }
                 this.isLoading = false;
             },
+            
+            // Mode edit untuk status.
             startEditing(status) {
                 this.editingStatusId = status.id;
                 this.editStatusName = status.name;
                 this.editStatusColor = status.color;
             },
+            
+            // Batal edit status.
             cancelEditing() {
                 this.editingStatusId = null;
                 this.editStatusName = '';
                 this.editStatusColor = '';
             },
 
-            // === FUNGSI INLINE EDITING TUGAS (Lengkap) ===
+            // Cek apakah field task sedang diedit.
             isEditing(taskId, field) {
                 return this.editingTask.id === taskId && this.editingTask.field === field;
             },
+            
+            // Mode edit untuk task.
             startTaskEditing(task, field) {
                 this.editingTask.id = task.id;
                 this.editingTask.field = field;
-                this.editingTask.buffer = (field === 'status_id') ? task.status_id : task[field]; // <-- PERBAIKAN DARI 'status' ke 'status_id'
+
+                if (field === 'deadline') {
+                    if (task.deadline) {
+                        const d = new Date(task.deadline);
+                        const yyyy = d.getFullYear();
+                        const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+                        const dd = d.getDate().toString().padStart(2, '0');
+                        const hh = d.getHours().toString().padStart(2, '0');
+                        const min = d.getMinutes().toString().padStart(2, '0');
+                        this.editingTask.buffer = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+                    } else {
+                        this.editingTask.buffer = null; 
+                    }
+                } else if (field === 'status_id') {
+                    this.editingTask.buffer = task.status_id;
+                } else {
+                    this.editingTask.buffer = task[field];
+                }
             },
+            
+            // Batal edit task.
             cancelTaskEditing() {
                 this.editingTask.id = null;
                 this.editingTask.field = null;
                 this.editingTask.buffer = null;
             },
+            
+            // Menyimpan perubahan inline pada task.
             async saveTaskEdit(task) {
-                // Jangan simpan jika tidak ada perubahan
-                if (this.editingTask.buffer === task[this.editingTask.field]) {
+                const originalValue = this.editingTask.field === 'status_id' ? task.status_id : task[this.editingTask.field];
+                
+                let bufferValue = this.editingTask.buffer;
+                let originalNormalized = originalValue;
+
+                if (bufferValue === '') bufferValue = null;
+                
+                if (this.editingTask.field === 'deadline' && originalValue) {
+                     const d = new Date(originalValue);
+                     const yyyy = d.getFullYear();
+                     const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+                     const dd = d.getDate().toString().padStart(2, '0');
+                     const hh = d.getHours().toString().padStart(2, '0');
+                     const min = d.getMinutes().toString().padStart(2, '0');
+                     originalNormalized = `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+                }
+
+                if (bufferValue == originalNormalized) { 
                     this.cancelTaskEditing();
                     return;
                 }
-
+                
                 const field = this.editingTask.field;
-                const value = this.editingTask.buffer;
+                let value = this.editingTask.buffer; 
+
+                if ((field === 'status_id' || field === 'deadline') && value === '') {
+                    value = null;
+                }
                 
                 try {
                     const response = await fetch(`/tasks/personal/${task.id}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': '{{ csrf_token() }}' },
+                        headers: { 
+                            'Content-Type': 'application/json', 
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
                         body: JSON.stringify({
                             [field]: value 
                         })
                     });
-                    if (!response.ok) throw new Error('Failed to update task');
-                    const updatedTask = await response.json();
-                    const index = this.tasks.findIndex(t => t.id === task.id);
-                    if (index !== -1) {
-                        this.tasks[index] = updatedTask;
+                    
+                    if (!response.ok) {
+                        if (response.status === 422) {
+                            const errorData = await response.json();
+                            const firstError = Object.values(errorData.errors)[0][0];
+                            alert(`Validation failed: ${firstError}`);
+                        } else {
+                            throw new Error('Failed to update task');
+                        }
+                    } else {
+                        const updatedTask = await response.json();
+                        const index = this.tasks.findIndex(t => t.id === task.id);
+                        if (index !== -1) {
+                            this.tasks[index] = updatedTask;
+                        }
+                        this.cancelTaskEditing();
                     }
-                    this.cancelTaskEditing();
+
                 } catch (error) {
-                    console.error('Save Task Error:', error); // Tampilkan error di console
-                    alert('Failed to update task.'); // Tampilkan alert (seperti di screenshot Anda)
+                    console.error('Save Task Error:', error); 
+                    alert('Failed to update task. Check console for details.');
                 }
             }
         }">
 
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900">
-
-                    <div class="mb-6 flex justify-between items-center">
+                <div class="p-6 text-gray-900"> <div class="mb-6 flex justify-between items-center">
                         <a href="{{ route('tasks.createPersonal') }}" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                             Add New Task
                         </a>
@@ -174,16 +258,21 @@
                                                   @click="startTaskEditing(task, 'name')" 
                                                   class="text-sm font-medium text-gray-900 cursor-pointer"
                                                   x-text="task.name"></span>
-                                            <input type="text" x-show="isEditing(task.id, 'name')" 
+                                            
+                                            <input type="text" 
+                                                   x-show="isEditing(task.id, 'name')"
                                                    x-model="editingTask.buffer" 
                                                    @keydown.enter="saveTaskEdit(task)" 
                                                    @keydown.escape="cancelTaskEditing()"
-                                                   @click.away="saveTaskEdit(task)" class="text-sm form-input rounded-md border-gray-300" x-init="$nextTick(() => $el.focus())">
+                                                   @click.away="saveTaskEdit(task)" 
+                                                   class="text-sm form-input rounded-md border-gray-300" 
+                                                   x-init="$nextTick(() => { if(isEditing(task.id, 'name')) $el.focus() })">
                                         </td>
                                         
                                         <td class="px-6 py-4 whitespace-nowrap">
                                             <span x-show="!isEditing(task.id, 'status_id')"
-                                                  @click="startTaskEditing(task, 'status_id')" class="text-sm cursor-pointer px-2 inline-flex leading-5 font-semibold rounded-full"
+                                                  @click="startTaskEditing(task, 'status_id')"
+                                                  class="text-sm cursor-pointer px-2 inline-flex leading-5 font-semibold rounded-full"
                                                   :style="{ 
                                                       backgroundColor: task.status ? task.status.color + '20' : '#e5e7eb', 
                                                       color: task.status ? task.status.color : '#374151' 
@@ -194,7 +283,8 @@
                                                     x-model="editingTask.buffer"
                                                     @change="saveTaskEdit(task)"
                                                     @click.away="cancelTaskEditing()"
-                                                    class="text-sm form-select rounded-md border-gray-300" x-init="$nextTick(() => $el.focus())">
+                                                    class="text-sm form-select rounded-md border-gray-300" 
+                                                    x-init="$nextTick(() => { if(isEditing(task.id, 'status_id')) $el.focus() })">
                                                 <option value="">-- No Status --</option>
                                                 <template x-for="status in pageStatuses" :key="status.id">
                                                     <option :value="status.id" x-text="status.name"></option>
@@ -208,26 +298,38 @@
                                                   class="text-sm text-gray-700 cursor-pointer"
                                                   x-text="task.deadline ? new Date(task.deadline).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'No Date'">
                                             </span>
-                                            <input type="datetime-local" x-show="isEditing(task.id, 'deadline')"
+                                            <input type="datetime-local"
+                                                   x-show="isEditing(task.id, 'deadline')"
                                                    x-model="editingTask.buffer"
                                                    @change="saveTaskEdit(task)"
                                                    @click.away="cancelTaskEditing()"
-                                                   class="text-sm form-input rounded-md border-gray-300" x-init="$nextTick(() => $el.focus())">
+                                                   class="text-sm form-input rounded-md border-gray-300" 
+                                                   x-init="$nextTick(() => { if(isEditing(task.id, 'deadline')) $el.focus() })">
                                         </td>
 
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <form action="#" @submit.prevent="
-                                                if (confirm('Are you sure you want to delete this task?')) {
-                                                    fetch(`/tasks/personal/${task.id}`, {
-                                                        method: 'DELETE',
-                                                        headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}' }
-                                                    }).then(response => {
-                                                        if (response.ok) {
-                                                            tasks = tasks.filter(t => t.id !== task.id);
-                                                            Swal.fire('Deleted!', 'Task deleted successfully.', 'success');
-                                                        }
-                                                    });
-                                                }
+                                                // --- BAGIAN DELETE TASK (LANGSUNG HAPUS) ---
+                                                fetch(`/tasks/personal/${task.id}`, {
+                                                    method: 'DELETE',
+                                                    headers: { 
+                                                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                                        'Accept': 'application/json',
+                                                        'X-Requested-With': 'XMLHttpRequest'
+                                                    }
+                                                })
+                                                .then(response => {
+                                                    if (response.ok) {
+                                                        tasks = tasks.filter(t => t.id !== task.id);
+                                                        alert('Task deleted successfully.');
+                                                    } else {
+                                                        alert('Failed to delete task.');
+                                                    }
+                                                })
+                                                .catch(error => {
+                                                    console.error('Delete Task Error:', error);
+                                                    alert('Failed to delete task.');
+                                                });
                                             ">
                                                 @csrf
                                                 @method('DELETE')

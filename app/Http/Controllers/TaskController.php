@@ -5,24 +5,22 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use App\Models\Task;
 
 class TaskController extends Controller
 {
-    /**
-     * Menyimpan tugas personal baru ke database.
-     */
+    use AuthorizesRequests;
     /**
      * Menyimpan tugas personal baru ke database.
      */
     public function storePersonalTask(Request $request)
     {
-        // 1. Validasi data (dengan validasi status_id baru)
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'deadline' => 'nullable|date',
-            'status_id' => [ // <-- TAMBAHKAN VALIDASI INI
+            'status_id' => [ 
                 'nullable',
                 'integer',
                 // Pastikan status_id yang dikirim adalah milik user yang login
@@ -32,19 +30,17 @@ class TaskController extends Controller
             ],
         ]);
 
-        // 2. Buat tugas baru
         Task::create([
             'name' => $request->name,
             'description' => $request->description,
             'deadline' => $request->deadline,
-            'status_id' => $request->status_id, // <-- TAMBAHKAN BARIS INI
+            'status_id' => $request->status_id, 
             
             // === Kunci untuk Tugas Personal ===
             'user_id' => Auth::id(), 
             'created_by_user_id' => Auth::id(), 
         ]);
 
-        // 3. Kembalikan ke halaman dashboard
         return redirect()->route('dashboard')->with('success', 'Task added successfully!');
     }
 
@@ -63,26 +59,16 @@ class TaskController extends Controller
     }
 
     /**
-     * Menghapus tugas personal dari database.
+     * Menghapus tugas personal.
      */
     public function destroyPersonalTask(Task $task)
     {
-        // 1. Otorisasi (Cek Keamanan)
-        // Ini akan memanggil TaskPolicy Anda secara otomatis.
-        // Jika user bukan pemilik, ini akan error (Forbidden).
         $this->authorize('delete', $task);
-
-        // 2. Hapus Tugas
         $task->delete();
-
-        // 3. Kembalikan ke dashboard
-        return redirect()->route('dashboard')->with('success', 'Task deleted successfully!');
+        return response()->json(['message' => 'Task deleted successfully']);
     }
 
     /**
-     * Mengupdate tugas personal di database.
-     */
-/**
      * Mengupdate tugas personal di database.
      * Method ini sekarang mendukung request JSON (untuk inline edit) 
      * dan hanya mengupdate field yang dikirim.
