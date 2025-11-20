@@ -11,14 +11,66 @@
             tasks: {{ $tasks->toJson() }},
             pageStatuses: {{ $statuses->toJson() }},
             modalStatuses: [],
+            
+            // --- State Filter ---
+            filterStatus: 'all', 
+            filterDeadline: 'all', // State baru untuk filter deadline
+            
+            // --- State Modal ---
             newStatusName: '', 
             newStatusColor: '#3b82f6',
             editingStatusId: null, 
             editStatusName: '',
             editStatusColor: '',
+
+            // --- State Inline Editing ---
             editingTask: { id: null, field: null, buffer: null },
 
-            // Memuat status untuk modal.
+            // --- GETTER UNTUK FILTER TUGAS (STATUS + DEADLINE) ---
+            get filteredTasks() {
+                return this.tasks.filter(task => {
+                    // 1. Cek Filter Status
+                    const statusMatch = (this.filterStatus === 'all') ||
+                                        (this.filterStatus === 'none' && !task.status_id) ||
+                                        (task.status_id == this.filterStatus);
+
+                    // 2. Cek Filter Deadline
+                    let deadlineMatch = true;
+                    if (this.filterDeadline !== 'all') {
+                        if (this.filterDeadline === 'no_date') {
+                            deadlineMatch = !task.deadline;
+                        } else if (task.deadline) {
+                            const d = new Date(task.deadline);
+                            const now = new Date();
+                            
+                            // Reset jam untuk perbandingan hari yang akurat
+                            const todayStart = new Date(); todayStart.setHours(0,0,0,0);
+                            const dStart = new Date(d); dStart.setHours(0,0,0,0);
+
+                            if (this.filterDeadline === 'today') {
+                                // Cek apakah tanggal sama persis dengan hari ini
+                                deadlineMatch = dStart.getTime() === todayStart.getTime();
+                            } else if (this.filterDeadline === 'overdue') {
+                                // Cek apakah waktu deadline sudah lewat dari SKRG
+                                deadlineMatch = d < now; 
+                            } else if (this.filterDeadline === 'week') {
+                                // Cek 7 hari ke depan
+                                const nextWeek = new Date(todayStart);
+                                nextWeek.setDate(todayStart.getDate() + 7);
+                                deadlineMatch = d >= now && d <= nextWeek;
+                            }
+                        } else {
+                            // Jika filter aktif tapi task tidak punya deadline
+                            deadlineMatch = false;
+                        }
+                    }
+
+                    // Return true jika KEDUA filter cocok (AND logic)
+                    return statusMatch && deadlineMatch;
+                });
+            },
+
+            // Memuat status untuk modal
             async loadModalStatuses() {
                 this.isLoading = true;
                 try {
@@ -30,7 +82,7 @@
                 this.isLoading = false;
             },
             
-            // Menyimpan status baru.
+            // Menyimpan status baru
             async storeModalStatus() {
                 if (this.newStatusName.trim() === '') return;
                 this.isLoading = true;
@@ -55,7 +107,7 @@
                 this.isLoading = false;
             },
             
-            // Menghapus status.
+            // Menghapus status
             async deleteModalStatus(id) {
                 if (!confirm('Are you sure you want to delete this status?')) return;
                 this.isLoading = true;
@@ -76,7 +128,7 @@
                 this.isLoading = false;
             },
             
-            // Memperbarui status.
+            // Memperbarui status
             async updateModalStatus() {
                 if (this.editStatusName.trim() === '') return;
                 this.isLoading = true;
@@ -103,30 +155,25 @@
                 this.isLoading = false;
             },
             
-            // Mode edit untuk status.
             startEditing(status) {
                 this.editingStatusId = status.id;
                 this.editStatusName = status.name;
                 this.editStatusColor = status.color;
             },
             
-            // Batal edit status.
             cancelEditing() {
                 this.editingStatusId = null;
                 this.editStatusName = '';
                 this.editStatusColor = '';
             },
 
-            // Cek apakah field task sedang diedit.
             isEditing(taskId, field) {
                 return this.editingTask.id === taskId && this.editingTask.field === field;
             },
             
-            // Mode edit untuk task.
             startTaskEditing(task, field) {
                 this.editingTask.id = task.id;
                 this.editingTask.field = field;
-
                 if (field === 'deadline') {
                     if (task.deadline) {
                         const d = new Date(task.deadline);
@@ -146,17 +193,14 @@
                 }
             },
             
-            // Batal edit task.
             cancelTaskEditing() {
                 this.editingTask.id = null;
                 this.editingTask.field = null;
                 this.editingTask.buffer = null;
             },
             
-            // Menyimpan perubahan inline pada task.
             async saveTaskEdit(task) {
                 const originalValue = this.editingTask.field === 'status_id' ? task.status_id : task[this.editingTask.field];
-                
                 let bufferValue = this.editingTask.buffer;
                 let originalNormalized = originalValue;
 
@@ -193,9 +237,7 @@
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest'
                         },
-                        body: JSON.stringify({
-                            [field]: value 
-                        })
+                        body: JSON.stringify({ [field]: value })
                     });
                     
                     if (!response.ok) {
@@ -217,18 +259,47 @@
 
                 } catch (error) {
                     console.error('Save Task Error:', error); 
-                    alert('Failed to update task. Check console for details.');
+                    alert('Failed to update task.');
                 }
             }
         }">
 
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-                <div class="p-6 text-gray-900"> <div class="mb-6 flex justify-between items-center">
-                        <a href="{{ route('tasks.createPersonal') }}" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                            Add New Task
-                        </a>
-                        <button @click="statusModalOpen = true; loadModalStatuses()" class="text-sm font-medium text-gray-600 hover:text-gray-900">
+                <div class="p-6 text-gray-900">
+
+                    <div class="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
+                            <a href="{{ route('tasks.createPersonal') }}" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                                Add New Task
+                            </a>
+                            
+                            <div class="flex flex-col sm:flex-row gap-2">
+                                <div class="flex items-center">
+                                    <label for="filterStatus" class="mr-2 text-sm text-gray-600 font-medium">Status:</label>
+                                    <select x-model="filterStatus" id="filterStatus" class="text-sm form-select rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                        <option value="all">All</option>
+                                        <option value="none">No Status</option>
+                                        <template x-for="status in pageStatuses" :key="status.id">
+                                            <option :value="status.id" x-text="status.name"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div class="flex items-center sm:ml-4">
+                                    <label for="filterDeadline" class="mr-2 text-sm text-gray-600 font-medium">Deadline:</label>
+                                    <select x-model="filterDeadline" id="filterDeadline" class="text-sm form-select rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50">
+                                        <option value="all">All</option>
+                                        <option value="today">Today</option>
+                                        <option value="week">Next 7 Days</option>
+                                        <option value="overdue">Overdue</option>
+                                        <option value="no_date">No Deadline</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button @click="statusModalOpen = true; loadModalStatuses()" class="text-sm font-medium text-gray-600 hover:text-gray-900 whitespace-nowrap">
                             Manage Statuses
                         </button>
                     </div>
@@ -246,7 +317,7 @@
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <template x-for="(task, index) in tasks" :key="task.id">
+                                <template x-for="(task, index) in filteredTasks" :key="task.id">
                                     <tr class="hover:bg-gray-50">
                                         
                                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -309,7 +380,7 @@
 
                                         <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                             <form action="#" @submit.prevent="
-                                                // --- BAGIAN DELETE TASK (LANGSUNG HAPUS) ---
+                                                // --- DELETE TASK (TANPA ALERT) ---
                                                 fetch(`/tasks/personal/${task.id}`, {
                                                     method: 'DELETE',
                                                     headers: { 
@@ -320,15 +391,15 @@
                                                 })
                                                 .then(response => {
                                                     if (response.ok) {
+                                                        // Hapus dari array, filter akan otomatis update
                                                         tasks = tasks.filter(t => t.id !== task.id);
-                                                        alert('Task deleted successfully.');
+                                                        // ALERT DIHAPUS
                                                     } else {
                                                         alert('Failed to delete task.');
                                                     }
                                                 })
                                                 .catch(error => {
                                                     console.error('Delete Task Error:', error);
-                                                    alert('Failed to delete task.');
                                                 });
                                             ">
                                                 @csrf
@@ -339,9 +410,10 @@
                                     </tr>
                                 </template>
                                 
-                                <template x-if="tasks.length === 0">
+                                <template x-if="filteredTasks.length === 0">
                                     <tr>
-                                        <td colspan="5" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center"> You don't have any personal tasks yet.
+                                        <td colspan="5" class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center"> 
+                                            No tasks found matching filters.
                                         </td>
                                     </tr>
                                 </template>
