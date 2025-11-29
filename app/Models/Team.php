@@ -11,7 +11,10 @@ use App\Models\Task;
 
 class Team extends Model
 {
-    //
+    protected $fillable = [
+        'name',
+        'owner_id',
+    ];
 
     /**
      * Mendefinisikan user yang 'memiliki' (membuat) tim ini.

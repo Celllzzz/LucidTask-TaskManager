@@ -10,7 +10,11 @@ use App\Models\Permission;
 
 class Role extends Model
 {
-    //
+    protected $fillable = [
+        'team_id',
+        'name',
+        'description',
+    ];
 
     /**
      * Mendefinisikan tim yang memiliki role ini.

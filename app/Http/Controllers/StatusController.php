@@ -42,8 +42,6 @@ class StatusController extends Controller
         return response()->json($status, 201); // 201 = Created
     }
 
-    // --- ⬇️ TAMBAHKAN DUA METHOD BARU DI BAWAH INI ⬇️ ---
-
     /**
      * Mengupdate status personal yang ada.
      */
